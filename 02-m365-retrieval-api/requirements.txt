@@ -1,0 +1,4 @@
+azure-ai-projects>=1.0.0b5
+azure-identity>=1.15.0
+msal>=1.26.0
+requests>=2.31.0

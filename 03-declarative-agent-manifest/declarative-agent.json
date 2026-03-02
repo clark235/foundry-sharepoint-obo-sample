@@ -1,0 +1,20 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/copilot/declarative-agent/v1.0/schema.json",
+  "name": "HR Policy Assistant",
+  "description": "Answers HR questions using SharePoint documents and custom analysis",
+  "instructions": "You help employees with HR policy questions. Search SharePoint for relevant policies first. If the user needs a detailed comparison or analysis, use the FoundryAnalysis action. Always cite your SharePoint sources.",
+  "capabilities": [
+    {
+      "name": "GraphConnectors",
+      "connections": [
+        { "connection_id": "sharepoint" }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "foundryAnalysis",
+      "file": "foundry-plugin.json"
+    }
+  ]
+}
