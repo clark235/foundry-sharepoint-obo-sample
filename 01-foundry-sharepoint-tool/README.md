@@ -1,90 +1,145 @@
 # Pattern 1: Foundry Agent with Native SharePoint Tool
 
-This pattern uses Azure AI Foundry's built-in `SharepointToolDefinition` to give an agent access to SharePoint documents. The SDK handles **identity passthrough (OBO)** automatically — the user's permissions are enforced by SharePoint, so the agent can only see documents the user has access to.
+> **Approach:** Use the built-in `SharepointToolDefinition` in Azure AI Foundry. The SDK handles OBO token exchange automatically — you write zero auth code for SharePoint.
+
+---
 
 ## How It Works
 
-```
-User signs in (InteractiveBrowserCredential)
-    ↓
-AIProjectClient authenticates as the user
-    ↓
-Agent created with SharepointToolDefinition
-    ↓
-User sends a question
-    ↓
-Foundry passes user's OBO token to SharePoint
-    ↓
-SharePoint returns only documents the user can access
-    ↓
-Agent synthesises an answer with citations
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1e3a5f', 'primaryTextColor': '#e2e8f0', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b'}}}%%
+flowchart LR
+    U["👤 User"] -->|"1. Signs in\n(browser popup)"| APP["🖥️ Your App\nAIProjectClient"]
+    APP -->|"2. Creates agent with\nSharepointToolDefinition"| FA["🤖 Foundry Agent"]
+    FA -->|"3. OBO token exchange\n(automatic)"| SP[("📄 SharePoint")]
+    SP -->|"4. Permission-trimmed\ndocuments"| FA
+    FA -->|"5. Answer + citations"| APP
+    APP -->|"6. Display"| U
+
+    style U fill:#1e3a5f,stroke:#3b82f6,color:#e2e8f0
+    style APP fill:#312e81,stroke:#6366f1,color:#eef2ff
+    style FA fill:#312e81,stroke:#6366f1,color:#eef2ff
+    style SP fill:#14532d,stroke:#22c55e,color:#f0fdf4
 ```
 
-**Key point:** The `SharepointToolDefinition` uses identity passthrough under the hood. You don't write any Graph API or SharePoint API calls — Foundry handles the token exchange, the search, and the grounding automatically.
+## OBO Token Flow (Under the Hood)
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1e3a5f', 'primaryTextColor': '#e2e8f0', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b'}}}%%
+sequenceDiagram
+    participant U as 👤 User
+    participant App as 🖥️ Your App
+    participant Entra as 🔐 Entra ID
+    participant Foundry as 🤖 Foundry Agent Service
+    participant SP as 📄 SharePoint
+
+    U->>App: 1. Sign in via browser
+    App->>Entra: 2. InteractiveBrowserCredential
+    Entra-->>App: 3. User access token
+
+    App->>Foundry: 4. Create agent + send message
+    Note over App,Foundry: User token flows via AIProjectClient
+
+    Foundry->>Entra: 5. OBO token exchange
+    Note over Foundry,Entra: "Give me a SharePoint-scoped\ntoken for this user"
+    Entra-->>Foundry: 6. SharePoint-scoped user token
+
+    Foundry->>SP: 7. Search with user's identity
+    SP-->>Foundry: 8. Only docs user can access
+
+    Foundry-->>App: 9. Answer with citations
+```
+
+**The key insight:** You never touch SharePoint APIs, Graph tokens, or OBO logic. The `SharepointToolDefinition` handles all of it inside the Foundry service.
+
+---
 
 ## Prerequisites
 
-1. **Azure AI Foundry project** — [Create one](https://ai.azure.com)
-2. **M365 Copilot licence** on the user account — required for SharePoint grounding
-3. **SharePoint connection** configured in Foundry (see setup below)
-4. **Azure AD app registration** — for interactive user sign-in
-5. **Python 3.9+**
+| Requirement | Details |
+|---|---|
+| Azure AI Foundry project | [Create at ai.azure.com](https://ai.azure.com) |
+| M365 Copilot licence | On the user account — required for SharePoint grounding |
+| SharePoint connection | Configured in Foundry project (see setup) |
+| Azure AD app registration | Public client for interactive sign-in |
+| Python 3.9+ | `pip install azure-ai-projects azure-identity` |
+
+---
 
 ## Setup
 
-### 1. Create an Azure AD App Registration
+### 1. Create Azure AD App Registration
 
-1. Go to [Azure Portal → App registrations → New registration](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
-2. Name: `Foundry SharePoint Sample` (or similar)
-3. Supported account types: **Single tenant**
-4. Redirect URI: `http://localhost` (type: Mobile and desktop applications)
-5. Note the **Application (client) ID** and **Directory (tenant) ID**
+```
+Azure Portal → App registrations → + New registration
+├── Name: "Foundry SharePoint Sample"
+├── Account type: Single tenant
+├── Redirect URI: http://localhost (Mobile/desktop)
+└── Note: Client ID + Tenant ID
+```
 
-### 2. Create a SharePoint Connection in Foundry
+### 2. Create SharePoint Connection in Foundry
 
-1. Go to [Azure AI Foundry](https://ai.azure.com) → your project
-2. **Project Settings** → **Connected resources** → **+ New connection**
-3. Select **SharePoint**
-4. Authenticate with an account that has SharePoint access
-5. Note the **Connection ID** (format: `/subscriptions/.../connections/<name>`)
+```
+ai.azure.com → Your Project → Settings → Connected resources
+├── + New connection → SharePoint
+├── Authenticate with an M365 account
+└── Note the Connection ID
+```
 
-### 3. Configure Environment
+> **Connection ID format:** `/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<acct>/projects/<proj>/connections/<name>`
+
+### 3. Configure & Run
 
 ```bash
 cp .env.example .env
-# Edit .env with your values
-```
+# Fill in your values
 
-### 4. Run
-
-```bash
 pip install -r requirements.txt
 python main.py
+# → Browser opens for sign-in
+# → Agent queries SharePoint and prints results
 ```
 
-A browser window will open for sign-in. After authentication, the agent will query SharePoint and print results.
+---
 
-## How OBO Works Here
+## When to Use This Pattern
 
-1. `InteractiveBrowserCredential` prompts the user to sign in via browser
-2. The credential is passed to `AIProjectClient`, which uses it for all API calls
-3. When the agent invokes the SharePoint tool, Foundry performs an OBO token exchange — it takes the user's token and requests a new token scoped to SharePoint
-4. SharePoint receives a token that represents **the user**, not the app or Foundry service
-5. SharePoint applies its normal permission checks and returns only accessible documents
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1e3a5f', 'primaryTextColor': '#e2e8f0', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b'}}}%%
+flowchart TB
+    subgraph Good["✅ Good fit"]
+        G1["Internal tools and notebooks"]
+        G2["Dev/test and prototyping"]
+        G3["Custom AI model required"]
+        G4["Multi-tool agents\n(AI Search + SharePoint + Code)"]
+    end
 
-This means: **if a user can't see a document in SharePoint, the agent can't see it either.**
+    subgraph Bad["❌ Not a fit"]
+        B1["Publishing to M365 Copilot\n(identity chain breaks)"]
+        B2["Server-to-server / batch jobs\n(no interactive sign-in)"]
+        B3["Users without M365 Copilot licence"]
+    end
+
+    style Good fill:#14532d,stroke:#22c55e,color:#f0fdf4
+    style Bad fill:#7c2d12,stroke:#ef4444,color:#fef2f2
+```
+
+---
 
 ## Limitations
 
-- **Cannot be published to M365 Copilot** — when a Foundry agent is surfaced through M365 Copilot (e.g., in Teams), the identity chain breaks. The user's token doesn't flow through the M365 → Foundry boundary correctly. Use [Pattern 3](../03-declarative-agent-manifest/) for that scenario.
-- **Interactive sign-in required** — this pattern requires the user to sign in via browser. For server-to-server scenarios, you'd need a different credential type with delegated permissions.
-- **M365 Copilot licence required** — without it, the SharePoint tool won't return results even if the user has SharePoint access.
-- **SharePoint connection scope** — the connection is project-level, so all agents in the project share it.
+- **Cannot publish to M365 Copilot** — when surfaced through M365 Copilot (Teams), the user token doesn't flow through the M365 → Foundry boundary. Use [Pattern 3](../03-declarative-agent-manifest/) for M365 deployment.
+- **Interactive sign-in required** — the user must authenticate via browser. No headless/service token scenario.
+- **M365 Copilot licence required** — SharePoint tool returns empty results without it.
+- **Project-level connection** — all agents in the same Foundry project share the SharePoint connection.
+
+---
 
 ## Files
 
 | File | Description |
 |---|---|
-| `main.py` | Complete working example |
+| `main.py` | Complete working example — agent creation, query, response |
 | `.env.example` | Environment variable template |
-| `requirements.txt` | Python dependencies |
+| `requirements.txt` | `azure-ai-projects`, `azure-identity` |

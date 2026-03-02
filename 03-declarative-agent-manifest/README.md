@@ -1,92 +1,222 @@
-# Pattern 3: Declarative Agent Manifest + Foundry API Plugin
+# Pattern 3: Declarative Agent + Foundry API Plugin ⭐
 
-This pattern runs **inside M365 Copilot** (Teams, M365 Chat, etc.) as a declarative agent. SharePoint grounding is handled natively by M365 Copilot, and a Foundry-backed API plugin provides custom analysis capabilities. No Python needed for the agent itself — just JSON manifests.
+> **Approach:** Build a declarative agent in M365 Copilot that handles SharePoint natively and calls your Foundry agent as an API plugin. Zero OBO code. Lowest complexity. Enterprise-ready.
 
-## Why This Pattern?
-
-- **Runs in M365 Copilot** — users access it directly in Teams or M365 Chat
-- **SharePoint grounding is automatic** — M365 Copilot handles the OBO token exchange and permission trimming
-- **No custom retrieval code** — you don't call the Retrieval API yourself
-- **Extensible** — add Foundry-powered actions for custom logic beyond simple Q&A
-- **Enterprise-ready** — deployed via Teams Developer Portal, manageable by IT admins
+---
 
 ## How It Works
 
-```
-User asks a question in M365 Copilot
-    ↓
-Declarative agent instructions guide Copilot
-    ↓
-Copilot searches SharePoint (GraphConnectors capability)
-    ↓
-SharePoint returns permission-trimmed results (OBO handled by Copilot)
-    ↓
-If custom analysis needed: Copilot calls Foundry plugin endpoint
-    ↓
-Foundry endpoint receives query + SharePoint context
-    ↓
-Foundry agent processes and returns analysis
-    ↓
-Copilot presents the combined answer to the user
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1e3a5f', 'primaryTextColor': '#e2e8f0', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b'}}}%%
+flowchart TB
+    U["👤 User"] -->|"Asks a question\nin Teams / M365 Chat"| DA
+
+    subgraph M365["Microsoft 365 Copilot"]
+        DA["🤖 Declarative Agent\nYour custom instructions"]
+        SP_CAP["📄 SharePoint Capability\nGraphConnectors"]
+        PLUGIN["🔌 Foundry Plugin Action\nOpenAPI spec → POST /analyze"]
+    end
+
+    subgraph Azure["Azure"]
+        ENDPOINT["☁️ REST Endpoint\nApp Service / Functions"]
+        FA["🤖 Foundry Agent\nCustom AI logic"]
+    end
+
+    SP[("📄 SharePoint\nDocuments")]
+
+    DA --> SP_CAP
+    SP_CAP -->|"User's OBO token\n(M365 handles this)"| SP
+    SP -->|"Permission-trimmed\ncontent"| SP_CAP
+    SP_CAP --> DA
+
+    DA -->|"Need custom analysis?"| PLUGIN
+    PLUGIN -->|"POST /analyze\n{query, context}"| ENDPOINT
+    ENDPOINT --> FA
+    FA -->|"Analysis JSON"| ENDPOINT
+    ENDPOINT --> PLUGIN
+
+    DA -->|"Combined answer\n+ citations"| U
+
+    style U fill:#1e3a5f,stroke:#3b82f6,color:#e2e8f0
+    style DA fill:#14532d,stroke:#22c55e,color:#f0fdf4
+    style SP_CAP fill:#14532d,stroke:#22c55e,color:#f0fdf4
+    style PLUGIN fill:#14532d,stroke:#22c55e,color:#f0fdf4
+    style ENDPOINT fill:#312e81,stroke:#6366f1,color:#eef2ff
+    style FA fill:#312e81,stroke:#6366f1,color:#eef2ff
+    style SP fill:#1e293b,stroke:#64748b,color:#94a3b8
 ```
 
-## Architecture
+---
 
+## Why This Pattern?
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1e3a5f', 'primaryTextColor': '#e2e8f0', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b'}}}%%
+graph LR
+    subgraph Benefits
+        B1["🚀 No OBO code\nM365 handles identity"]
+        B2["📋 JSON manifests\nNo custom orchestration"]
+        B3["🔒 Permission trimming\nAutomatic via M365"]
+        B4["🏢 Enterprise deployment\nTeams admin manages rollout"]
+        B5["🔌 Extensible\nAdd more API actions anytime"]
+    end
+
+    style Benefits fill:#14532d,stroke:#22c55e,color:#f0fdf4
 ```
-┌──────────────────────────────────────────────────┐
-│  M365 Copilot (Teams / M365 Chat)                │
-│                                                    │
-│  ┌─────────────────────┐  ┌─────────────────────┐ │
-│  │  SharePoint          │  │  Foundry Plugin     │ │
-│  │  (GraphConnectors)   │  │  (API action)       │ │
-│  │                      │  │                     │ │
-│  │  OBO handled by      │  │  POST /analyze      │ │
-│  │  M365 Copilot        │  │  → Azure App Svc    │ │
-│  │  automatically        │  │  → Foundry Agent    │ │
-│  └─────────────────────┘  └─────────────────────┘ │
-└──────────────────────────────────────────────────┘
+
+---
+
+## Authentication Flow
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1e3a5f', 'primaryTextColor': '#e2e8f0', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b'}}}%%
+sequenceDiagram
+    participant U as 👤 User (Teams)
+    participant DA as 🤖 Declarative Agent
+    participant M365 as 🔐 M365 Copilot
+    participant SP as 📄 SharePoint
+    participant Plugin as 🔌 Foundry Plugin
+    participant FA as 🤖 Foundry Agent
+
+    U->>DA: "What does our remote work policy say?"
+
+    rect rgb(20, 83, 45)
+        Note over DA,SP: OBO — handled entirely by M365
+        DA->>M365: Trigger SharePoint search
+        M365->>SP: User's delegated token (OBO)
+        SP-->>M365: Docs the user can access ✅
+        M365-->>DA: Permission-trimmed content
+    end
+
+    rect rgb(49, 46, 129)
+        Note over DA,FA: Plugin — service-to-service
+        DA->>Plugin: POST /analyze {query, context}
+        Plugin->>FA: Forward to Foundry agent
+        FA-->>Plugin: Analysis result
+        Plugin-->>DA: JSON response
+    end
+
+    DA-->>U: "Our remote work policy states..."<br/>📎 Source: HR-Policy-2025.docx
 ```
+
+> **You write no auth code.** M365 Copilot handles the OBO exchange for SharePoint. Your Foundry endpoint receives a service-to-service call — no user token needed.
+
+---
 
 ## Prerequisites
 
-1. **M365 Copilot licence** on the user account
-2. **Teams Developer Portal** access — to deploy the declarative agent
-3. **Azure AI Foundry project** with a pre-created agent (for the plugin endpoint)
-4. **Azure hosting** for the stub endpoint (App Service, Container App, or Functions)
+| Requirement | Details | Notes |
+|---|---|---|
+| M365 Copilot licence | Required per user | Standard M365 Copilot |
+| Azure AI Foundry project | Any tier | Pre-create an agent, note its ID |
+| Azure hosting | App Service, Container Apps, or Functions | For the `/analyze` endpoint |
+| Teams Developer Portal | [dev.teams.microsoft.com](https://dev.teams.microsoft.com) | To deploy the agent |
+| Entra app registration | For plugin endpoint auth | Client credentials flow |
+
+---
 
 ## Files
 
-| File | Description |
+| File | What it does |
 |---|---|
-| `declarative-agent.json` | Declarative agent manifest — defines the agent's name, instructions, SharePoint capability, and Foundry action |
-| `foundry-plugin.json` | OpenAPI spec for the Foundry analysis plugin — defines the `/analyze` endpoint |
-| `stub-endpoint/app.py` | Flask app implementing the `/analyze` endpoint — calls a Foundry agent |
-| `stub-endpoint/requirements.txt` | Python dependencies for the stub endpoint |
+| `declarative-agent.json` | Agent manifest — name, instructions, SharePoint capability, Foundry action |
+| `foundry-plugin.json` | OpenAPI 3.0 spec — describes the `/analyze` endpoint |
+| `stub-endpoint/app.py` | Flask endpoint — receives context from M365, calls Foundry agent |
+| `stub-endpoint/requirements.txt` | Python dependencies |
+
+---
+
+## Manifest Walkthrough
+
+### `declarative-agent.json`
+
+```json
+{
+  "name": "HR Policy Assistant",
+  "instructions": "Search SharePoint for relevant policies first. 
+                    If the user needs analysis, use the FoundryAnalysis action.",
+  "capabilities": [
+    {
+      "name": "GraphConnectors",          ← SharePoint grounding
+      "connections": [
+        { "connection_id": "sharepoint" }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "foundryAnalysis",            ← Foundry plugin
+      "file": "foundry-plugin.json"
+    }
+  ]
+}
+```
+
+### `foundry-plugin.json`
+
+```json
+{
+  "openapi": "3.0.1",
+  "paths": {
+    "/analyze": {
+      "post": {
+        "operationId": "analyzeContent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "query": { "type": "string" },    ← User's question
+                  "context": { "type": "string" }   ← SharePoint content
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+---
 
 ## Setup
 
-### 1. Deploy the Stub Endpoint
+### Step 1: Deploy the Foundry Endpoint
 
-The stub endpoint (`stub-endpoint/app.py`) needs to be hosted somewhere accessible by M365 Copilot.
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1e3a5f', 'primaryTextColor': '#e2e8f0', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b'}}}%%
+flowchart LR
+    CODE["stub-endpoint/\napp.py"] -->|Deploy to| HOST{"Choose hosting"}
+    HOST -->|Option A| AAS["Azure App Service\naz webapp up"]
+    HOST -->|Option B| ACA["Container Apps\naz containerapp up"]
+    HOST -->|Option C| AF["Azure Functions\nHTTP trigger"]
+    AAS --> URL["https://your-endpoint.azurewebsites.net"]
+    ACA --> URL
+    AF --> URL
 
-**Option A: Azure App Service**
+    style CODE fill:#312e81,stroke:#6366f1,color:#eef2ff
+    style URL fill:#14532d,stroke:#22c55e,color:#f0fdf4
+```
+
+**Azure App Service (quickest):**
 ```bash
 cd stub-endpoint
-az webapp up --name your-foundry-endpoint --runtime PYTHON:3.11
-az webapp config appsettings set --name your-foundry-endpoint \
-  --settings FOUNDRY_PROJECT_ENDPOINT=https://... FOUNDRY_AGENT_ID=asst_...
+
+az webapp up \
+  --name your-foundry-endpoint \
+  --runtime PYTHON:3.11 \
+  --sku B1
+
+az webapp config appsettings set \
+  --name your-foundry-endpoint \
+  --settings \
+    FOUNDRY_PROJECT_ENDPOINT="https://<acct>.services.ai.azure.com/api/projects/<proj>" \
+    FOUNDRY_AGENT_ID="asst_xxxxxxxxxxxxxxxxxxxx"
 ```
 
-**Option B: Azure Container Apps**
-```bash
-# Build and deploy a container
-az containerapp up --name foundry-endpoint --source stub-endpoint/
-```
-
-**Option C: Azure Functions**
-Adapt `app.py` to use Azure Functions HTTP trigger.
-
-### 2. Update the Plugin URL
+### Step 2: Update Plugin URL
 
 In `foundry-plugin.json`, replace the server URL:
 ```json
@@ -95,44 +225,45 @@ In `foundry-plugin.json`, replace the server URL:
 ]
 ```
 
-### 3. Deploy the Declarative Agent
+### Step 3: Deploy the Declarative Agent
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1e3a5f', 'primaryTextColor': '#e2e8f0', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b'}}}%%
+flowchart TB
+    MANIFESTS["declarative-agent.json\n+ foundry-plugin.json"] --> PORTAL["Teams Developer Portal\ndev.teams.microsoft.com"]
+    PORTAL --> CREATE["Create new app\n+ Add Copilot agent"]
+    CREATE --> UPLOAD["Upload manifests"]
+    UPLOAD --> PUBLISH["Publish to your org\n(admin approval required)"]
+    PUBLISH --> LIVE["🟢 Live in Teams!\nUsers can chat with agent"]
+
+    style MANIFESTS fill:#1e293b,stroke:#64748b,color:#94a3b8
+    style LIVE fill:#14532d,stroke:#22c55e,color:#f0fdf4
+```
 
 **Via Teams Developer Portal:**
-1. Go to [Teams Developer Portal](https://dev.teams.microsoft.com/)
-2. Create a new app
-3. Under **Copilot agents**, add a declarative agent
-4. Upload `declarative-agent.json` and `foundry-plugin.json`
-5. Publish to your organisation
+1. Go to [dev.teams.microsoft.com](https://dev.teams.microsoft.com)
+2. Create a new app → **Copilot agents** → Add declarative agent
+3. Upload `declarative-agent.json` and `foundry-plugin.json`
+4. Publish to your organisation (requires Teams admin approval)
 
 **Via Teams Toolkit (VS Code):**
 1. Create a new Teams app project
-2. Replace the generated manifests with the files in this folder
-3. Deploy using the Teams Toolkit sidebar
+2. Replace generated manifests with these files
+3. Deploy using the Teams Toolkit sidebar → Publish to organization
 
-### 4. Test
+### Step 4: Test
 
-1. Open Teams or M365 Chat
-2. Start a conversation with the "HR Policy Assistant" agent
-3. Ask a question about HR policies
-4. The agent will search SharePoint and optionally call the Foundry plugin
+1. Open **Teams** or **M365 Chat**
+2. Start a conversation with the "HR Policy Assistant"
+3. Ask: *"What does our remote work policy say about working from another country?"*
+4. The agent searches SharePoint → optionally calls Foundry plugin → returns answer with citations
 
-## How OBO Works Here
+---
 
-In this pattern, **you don't manage OBO at all**. M365 Copilot handles the entire identity chain:
+## Customisation
 
-1. User is already authenticated in Teams/M365
-2. When the declarative agent triggers a SharePoint search (via `GraphConnectors`), Copilot performs the OBO token exchange internally
-3. SharePoint returns only content the user can access
-4. If the plugin action is triggered, Copilot passes the retrieved context to your endpoint
-5. Your endpoint uses a **service identity** (not the user's) to call Foundry — the content is already permission-trimmed
+### Scope SharePoint to specific sites
 
-This is the most seamless OBO experience — but it only works within the M365 Copilot environment.
-
-## Customising the Manifest
-
-### Change SharePoint Scope
-
-To restrict which SharePoint sites the agent searches, modify the `GraphConnectors` capability:
 ```json
 "capabilities": [
   {
@@ -147,20 +278,72 @@ To restrict which SharePoint sites the agent searches, modify the `GraphConnecto
 ]
 ```
 
-### Add More Actions
+### Add more Foundry actions
 
-Add additional API plugins for different Foundry agents or external services:
 ```json
 "actions": [
   { "id": "foundryAnalysis", "file": "foundry-plugin.json" },
-  { "id": "ticketCreation", "file": "ticket-plugin.json" }
+  { "id": "documentSummary", "file": "summary-plugin.json" },
+  { "id": "complianceCheck", "file": "compliance-plugin.json" }
 ]
 ```
 
+### Pass user context to Foundry
+
+M365 Copilot doesn't pass the user's identity to plugin endpoints. To include user context, add it in the agent instructions:
+
+```json
+"instructions": "When calling FoundryAnalysis, always include the user's 
+                  display name and department from the conversation context."
+```
+
+---
+
+## When to Use This Pattern
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1e3a5f', 'primaryTextColor': '#e2e8f0', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b'}}}%%
+flowchart TB
+    subgraph Good["✅ Ideal for"]
+        G1["Enterprise production deployment"]
+        G2["Standard SharePoint Q&A + custom actions"]
+        G3["Quick prototype to production"]
+        G4["IT-managed rollout via Teams admin"]
+        G5["Multiple action plugins on one agent"]
+    end
+
+    subgraph Bad["❌ Not a fit"]
+        B1["Need a custom AI model\n(M365 Copilot model is used)"]
+        B2["Need full orchestration control\n(Copilot decides when to call plugins)"]
+        B3["Standalone app outside M365"]
+        B4["User identity required at Foundry endpoint"]
+    end
+
+    style Good fill:#14532d,stroke:#22c55e,color:#f0fdf4
+    style Bad fill:#7c2d12,stroke:#ef4444,color:#fef2f2
+```
+
+---
+
 ## Limitations
 
-- **M365 Copilot only** — this pattern doesn't work as a standalone app
-- **Limited orchestration control** — Copilot decides when to search SharePoint and when to call plugins
-- **Plugin latency** — round-trip to your Foundry endpoint adds latency
-- **Manifest schema changes** — the declarative agent schema is evolving; check the latest docs
-- **Admin deployment** — publishing to an organisation requires Teams admin approval
+| Limitation | Impact |
+|---|---|
+| **M365 Copilot only** | Users must be in Teams or M365 Chat |
+| **M365 model used** | You can't use a fine-tuned or specific Foundry model for the main orchestration |
+| **Copilot controls orchestration** | It decides when to search SharePoint vs. call your plugin |
+| **No user identity at endpoint** | Your Foundry endpoint gets a service call, not the user's token |
+| **Manifest schema evolving** | Check latest docs — the declarative agent schema may change |
+| **Admin approval required** | Publishing to an org needs Teams admin sign-off |
+
+---
+
+## References
+
+| Resource | Link |
+|---|---|
+| Declarative Agents | <https://learn.microsoft.com/microsoft-365-copilot/extensibility/overview-declarative-agent> |
+| API Plugins | <https://learn.microsoft.com/microsoft-365-copilot/extensibility/overview-api-plugins> |
+| Teams Developer Portal | <https://dev.teams.microsoft.com> |
+| Teams Toolkit | <https://learn.microsoft.com/microsoftteams/platform/toolkit/teams-toolkit-fundamentals> |
+| azure-ai-projects SDK | <https://pypi.org/project/azure-ai-projects/> |
