@@ -1,0 +1,176 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Foundry Analysis API",
+    "description": "Azure AI Foundry agent endpoint for deep policy analysis. Called by M365 Copilot declarative agent when the user's question requires comparison, synthesis, or compliance analysis across SharePoint content.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://your-foundry-endpoint.azurewebsites.net",
+      "description": "Production endpoint (replace with your deployed URL)"
+    }
+  ],
+  "security": [
+    {
+      "OAuth2": ["api://your-client-id/.default"]
+    }
+  ],
+  "paths": {
+    "/analyze": {
+      "post": {
+        "operationId": "analyzeContent",
+        "summary": "Analyse SharePoint content with Azure AI Foundry agent",
+        "description": "Accepts the user's question and SharePoint document content, runs them through a Foundry agent for deep analysis (comparison, synthesis, compliance checking), and returns a structured result. Use this when simple document retrieval is insufficient — for example, when comparing two policies or checking whether a situation complies with policy.",
+        "x-openai-isConsequential": false,
+        "security": [
+          {
+            "OAuth2": ["api://your-client-id/.default"]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["query", "context"],
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "The user's original question or analysis request"
+                  },
+                  "context": {
+                    "type": "string",
+                    "description": "SharePoint document content retrieved by M365 Copilot via the OneDriveAndSharePoint capability"
+                  },
+                  "user_display_name": {
+                    "type": "string",
+                    "description": "The display name of the user asking the question, for personalised responses (optional)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Analysis completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "analysis": {
+                      "type": "string",
+                      "description": "The detailed analysis produced by the Foundry agent"
+                    },
+                    "sources_used": {
+                      "type": "integer",
+                      "description": "Number of source document sections considered in the analysis"
+                    },
+                    "run_id": {
+                      "type": "string",
+                      "description": "Foundry agent run identifier for traceability"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request — missing required fields or invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized — missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error — Foundry agent failed or timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "healthCheck",
+        "summary": "Health check endpoint",
+        "description": "Returns the health status of the endpoint and its connection to Azure AI Foundry.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "foundry": {
+                      "type": "string",
+                      "example": "connected"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "OAuth2": {
+        "type": "oauth2",
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/authorize",
+            "tokenUrl": "https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token",
+            "scopes": {
+              "api://your-client-id/.default": "Access the Foundry Analysis API"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error code"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error description"
+          }
+        }
+      }
+    }
+  }
+}

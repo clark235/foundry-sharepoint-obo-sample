@@ -1,0 +1,36 @@
+{
+  "schema_version": "v2.2",
+  "name_for_human": "Foundry Analysis",
+  "namespace": "FoundryAnalysis",
+  "description_for_human": "Calls Azure AI Foundry agent for deep policy analysis, comparison, and compliance checks.",
+  "description_for_model": "Use this plugin when the user's question requires analysis that goes beyond simple document retrieval. Call this plugin when you need to: compare multiple policies, synthesise information across documents, check compliance against policy, produce structured summaries, or identify conflicts between policies. Do NOT call this plugin for simple factual lookups that SharePoint search already answered.",
+  "functions": [
+    {
+      "name": "analyzeContent",
+      "description": "Analyse SharePoint content using the Azure AI Foundry agent. Send the user's question and the SharePoint context you have already retrieved. Returns a structured analysis with the number of sources considered.",
+      "capabilities": {
+        "confirmation": {
+          "type": "AdaptiveCard",
+          "title": "Run Foundry Analysis",
+          "body": "The assistant wants to send your question and related SharePoint content to Azure AI Foundry for deeper analysis. Allow?"
+        },
+        "security_info": {
+          "data_handling": "read_only"
+        }
+      }
+    }
+  ],
+  "runtimes": [
+    {
+      "type": "OpenApi",
+      "auth": {
+        "type": "OAuthPluginVault",
+        "reference_id": "{OAUTH_REGISTRATION_ID}"
+      },
+      "spec": {
+        "url": "openapi.json"
+      },
+      "run_for_functions": ["analyzeContent"]
+    }
+  ]
+}

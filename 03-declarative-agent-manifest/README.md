@@ -117,67 +117,56 @@ sequenceDiagram
 
 ## Files
 
-| File | What it does |
-|---|---|
-| `declarative-agent.json` | Agent manifest — name, instructions, SharePoint capability, Foundry action |
-| `foundry-plugin.json` | OpenAPI 3.0 spec — describes the `/analyze` endpoint |
-| `stub-endpoint/app.py` | Flask endpoint — receives context from M365, calls Foundry agent |
-| `stub-endpoint/requirements.txt` | Python dependencies |
+```
+manifest/
+├── declarative-agent.json     ← Agent manifest (instructions, capabilities, actions)
+├── foundry-plugin.json        ← API plugin manifest (v2.2 format with OAuth)
+├── openapi.json               ← OpenAPI 3.0 spec (/analyze + /health, with auth)
+└── app-manifest.json          ← Teams app package manifest
+
+endpoint/
+├── app.py                     ← Production Flask endpoint with validation + logging
+├── auth.py                    ← Entra ID bearer token validation
+├── foundry_client.py          ← Foundry agent thread lifecycle management
+├── .env.example               ← Environment variable template
+├── requirements.txt           ← Python dependencies
+└── Dockerfile                 ← Container build for Azure Container Apps
+
+infra/
+└── main.bicep                 ← Azure infra (App Service Plan + App Service + identity)
+
+tests/
+└── test_endpoint.py           ← Pytest tests with mocked Foundry calls
+```
+
+> 📖 See **[WALKTHROUGH.md](WALKTHROUGH.md)** for a complete step-by-step implementation guide.
 
 ---
 
 ## Manifest Walkthrough
 
-### `declarative-agent.json`
+### `manifest/declarative-agent.json`
 
-```json
-{
-  "name": "HR Policy Assistant",
-  "instructions": "Search SharePoint for relevant policies first. 
-                    If the user needs analysis, use the FoundryAnalysis action.",
-  "capabilities": [
-    {
-      "name": "GraphConnectors",          ← SharePoint grounding
-      "connections": [
-        { "connection_id": "sharepoint" }
-      ]
-    }
-  ],
-  "actions": [
-    {
-      "id": "foundryAnalysis",            ← Foundry plugin
-      "file": "foundry-plugin.json"
-    }
-  ]
-}
-```
+Key fields:
+- **`instructions`** — detailed rules telling Copilot when to search SharePoint vs call the Foundry plugin (e.g., comparisons, compliance checks)
+- **`capabilities`** — `OneDriveAndSharePoint` for native document access + `GraphConnectors` for connector grounding
+- **`actions`** — references `foundry-plugin.json` which contains the API plugin manifest
+- **`conversation_starters`** — sample prompts shown to users
 
-### `foundry-plugin.json`
+### `manifest/foundry-plugin.json` (API Plugin Manifest v2.2)
 
-```json
-{
-  "openapi": "3.0.1",
-  "paths": {
-    "/analyze": {
-      "post": {
-        "operationId": "analyzeContent",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "query": { "type": "string" },    ← User's question
-                  "context": { "type": "string" }   ← SharePoint content
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-```
+This is the **plugin manifest** (not the OpenAPI spec). Key fields:
+- **`schema_version`**: `v2.2`
+- **`runtimes`** → `auth` → `OAuthPluginVault` with your Teams Developer Portal OAuth registration ID
+- **`functions`** — describes `analyzeContent` with a confirmation dialog
+
+### `manifest/openapi.json` (OpenAPI 3.0 Spec)
+
+Describes the REST API that backs the plugin:
+- **`/analyze`** — POST with OAuth2 security, `query` + `context` (required) + `user_display_name` (optional)
+- **`/health`** — GET, no auth, for App Service health probes
+- **Error responses** — 400, 401, 500 with structured error schema
+- **`x-openai-isConsequential: false`** — tells Copilot this is a read-only operation
 
 ---
 
@@ -188,13 +177,13 @@ sequenceDiagram
 ```mermaid
 %%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1e3a5f', 'primaryTextColor': '#e2e8f0', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b'}}}%%
 flowchart LR
-    CODE["stub-endpoint/\napp.py"] -->|Deploy to| HOST{"Choose hosting"}
+    CODE["endpoint/\napp.py"] -->|Deploy to| HOST{"Choose hosting"}
     HOST -->|Option A| AAS["Azure App Service\naz webapp up"]
-    HOST -->|Option B| ACA["Container Apps\naz containerapp up"]
-    HOST -->|Option C| AF["Azure Functions\nHTTP trigger"]
+    HOST -->|Option B| ACA["Container Apps\nDocker + az containerapp up"]
+    HOST -->|Option C| BICEP["Bicep IaC\ninfra/main.bicep"]
     AAS --> URL["https://your-endpoint.azurewebsites.net"]
     ACA --> URL
-    AF --> URL
+    BICEP --> URL
 
     style CODE fill:#312e81,stroke:#6366f1,color:#eef2ff
     style URL fill:#14532d,stroke:#22c55e,color:#f0fdf4
@@ -202,7 +191,7 @@ flowchart LR
 
 **Azure App Service (quickest):**
 ```bash
-cd stub-endpoint
+cd endpoint
 
 az webapp up \
   --name your-foundry-endpoint \
@@ -213,12 +202,17 @@ az webapp config appsettings set \
   --name your-foundry-endpoint \
   --settings \
     FOUNDRY_PROJECT_ENDPOINT="https://<acct>.services.ai.azure.com/api/projects/<proj>" \
-    FOUNDRY_AGENT_ID="asst_xxxxxxxxxxxxxxxxxxxx"
+    FOUNDRY_AGENT_ID="asst_xxxxxxxxxxxxxxxxxxxx" \
+    AZURE_TENANT_ID="<tenant-id>" \
+    AZURE_CLIENT_ID="<client-id>" \
+    USE_MANAGED_IDENTITY="true"
 ```
+
+> 📖 See **[WALKTHROUGH.md](WALKTHROUGH.md)** for Bicep and Container Apps deployment options.
 
 ### Step 2: Update Plugin URL
 
-In `foundry-plugin.json`, replace the server URL:
+In `manifest/openapi.json`, replace the server URL:
 ```json
 "servers": [
   { "url": "https://your-foundry-endpoint.azurewebsites.net" }
@@ -243,7 +237,7 @@ flowchart TB
 **Via Teams Developer Portal:**
 1. Go to [dev.teams.microsoft.com](https://dev.teams.microsoft.com)
 2. Create a new app → **Copilot agents** → Add declarative agent
-3. Upload `declarative-agent.json` and `foundry-plugin.json`
+3. Upload manifests from the `manifest/` directory
 4. Publish to your organisation (requires Teams admin approval)
 
 **Via Teams Toolkit (VS Code):**
